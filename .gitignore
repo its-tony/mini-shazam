@@ -2,7 +2,6 @@ venv/
 .pytest_cache/
 data/
 .claude/
-songs/
 tests/clips/
 
 # Byte-compiled / optimized / DLL files
