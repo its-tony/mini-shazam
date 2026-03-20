@@ -87,6 +87,7 @@ def find_peaks(spec, neighborhood_freq=PEAK_NEIGHBORHOOD_FREQ,
 
     This is the most important function for recognition quality.
     The algorithm has two steps:
+    
 
     STEP 1 — Band-based candidate selection:
       For each time frame (column of the spectrogram), look at each
@@ -127,36 +128,29 @@ def find_peaks(spec, neighborhood_freq=PEAK_NEIGHBORHOOD_FREQ,
     # STEP 1: For each time frame, pick the loudest bin per band
     # -------------------------------------------------------------- #
     band_peaks = set()
-
-    # TODO: Implement band-based peak selection
-    #
-    # For each time frame t in range(n_time):
-    #   For each (lo, hi) in freq_bands:
-    #     - Clamp hi to n_freq (in case the spectrogram is smaller than the band)
-    #     - Skip if lo >= n_freq
-    #     - Extract the slice of the column: spec[lo:hi, t]
-    #     - Find the index of the maximum value within that slice (np.argmax)
-    #     - Convert back to a global frequency index: f_global = lo + f_local
-    #     - If spec[f_global, t] > threshold, add (t, f_global) to band_peaks
-
-    raise NotImplementedError("Implement Step 1 of find_peaks()")
+    for t in range(n_time):
+        col = spec[:, t]
+        for lo, hi in freq_bands:
+            hi = min(hi, n_freq)
+            if lo >= n_freq:
+                break
+            band_slice = col[lo:hi]
+            if band_slice.size == 0:
+                continue
+            f_local = np.argmax(band_slice)
+            f_global = lo + f_local
+            if col[f_global] > threshold:
+                band_peaks.add((t, f_global))
 
     # -------------------------------------------------------------- #
     # STEP 2: Apply local-max filter to remove redundant peaks
     # -------------------------------------------------------------- #
-
-    # TODO: Implement local-max filtering
-    #
-    # 1. Compute the local maximum filter over the entire spectrogram:
-    #    local_max = maximum_filter(spec, size=(neighborhood_freq, neighborhood_time))
-    #
-    # 2. Filter band_peaks: keep only (t, f) where spec[f, t] == local_max[f, t]
-    #    (Note: spec is indexed as [freq, time] but peaks are stored as (time, freq))
-    #
-    # 3. Return the filtered peaks as a list of (int(t), int(f)) tuples
-
-    raise NotImplementedError("Implement Step 2 of find_peaks()")
-
+    local_max = maximum_filter(spec, size=(neighborhood_freq, neighborhood_time))
+    peaks = []
+    for t, f in band_peaks:
+        if spec[f, t] == local_max[f, t]:
+            peaks.append((int(t), int(f)))
+    return peaks
 
 # ------------------------------------------------------------------ #
 # Step 3: Hash two peaks into a fingerprint — YOU IMPLEMENT THIS
@@ -171,10 +165,9 @@ def hash_peak_pair(f1, f2, dt):
     specific: "440 Hz followed by 880 Hz, 5 time bins later" is unlikely
     to occur at the same position in two different songs.
 
-    We encode the pair as a single integer using bit packing:
+    
 
-        hash = (f1 << (FREQ_BITS + DELTA_BITS)) | (f2 << DELTA_BITS) | dt
-
+    
     This lays out three values in the bits of one integer:
 
         ┌──────────────┬──────────────┬──────────────┐
@@ -201,11 +194,7 @@ def hash_peak_pair(f1, f2, dt):
     Returns:
         A single integer encoding the peak pair.
     """
-    # TODO: Implement the bit-packing formula
-    #
-    # h = (f1 << (FREQ_BITS + DELTA_BITS)) | (f2 << DELTA_BITS) | dt
-
-    raise NotImplementedError("Implement hash_peak_pair()")
+    return (int(f1) << (FREQ_BITS + DELTA_BITS)) | (int(f2) << DELTA_BITS) | int(dt)
 
 
 # ------------------------------------------------------------------ #
@@ -247,10 +236,26 @@ def generate_fingerprints(peaks, fan_out=FAN_OUT,
         - hash_value: the integer from hash_peak_pair()
         - anchor_time: the time bin of the anchor peak (used as the "offset")
     """
+    
     # Sort peaks by time, then frequency
     peaks = sorted(peaks, key=lambda p: (p[0], p[1]))
     fingerprints = []
 
+    for i, (t1, f1) in enumerate(peaks):
+        paired = 0
+        for j in range(i + 1, len(peaks)):
+            t2, f2 = peaks[j] 
+            dt = t2 - t1 
+            if dt < zone_start:
+                continue
+            if dt > zone_end:
+                break
+            h = hash_peak_pair(f1, f2, dt)
+            fingerprints.append((h, t1))
+            paired += 1
+            if paired >= fan_out:
+                break
+    return fingerprints
     # TODO: Implement combinatorial fingerprint generation
     #
     # For each peak i (the anchor) at (t1, f1):
@@ -263,10 +268,6 @@ def generate_fingerprints(peaks, fan_out=FAN_OUT,
     #     Append (h, t1) to fingerprints
     #     paired += 1
     #     if paired >= fan_out: break
-
-    raise NotImplementedError("Implement generate_fingerprints()")
-
-    return fingerprints
 
 
 # ------------------------------------------------------------------ #

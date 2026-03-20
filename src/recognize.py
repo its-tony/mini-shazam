@@ -83,7 +83,38 @@ def recognize(audio, sample_rate, database):
     #
     # Step 4: Return results
 
-    raise NotImplementedError("Implement recognize()")
+    fingerprints = fingerprint_audio(audio, sample_rate)
+    if not fingerprints:
+        return None, 0, {}
+    
+    matches = {}
+    for hash_val, t_clip in fingerprints:
+        hits = database.table.lookup(hash_val)
+        for song_id, t_song in hits:
+            delta = t_song - t_clip
+            matches.setdefault(song_id, []).append(delta)
+            
+    if not matches:
+        return None, 0, {}
+    best_song_id = None
+    best_count = 0
+    all_scores = {}
+    for song_id, deltas in matches.items():
+        histogram = {}
+        for d in deltas:
+            histogram[d] = histogram.get(d, 0) + 1
+        peak_count = max(histogram.values())
+        song_name = database.get_song_name(song_id)
+        all_scores[song_name] = peak_count
+        if peak_count > best_count:
+            best_count = peak_count
+            best_song_id = song_id
+    best_song_name = database.get_song_name(best_song_id) if best_song_id is not None else None
+    return best_song_name, best_count, all_scores
+
+            
+    
+
 
 
 def record_and_recognize(database, duration=5, sample_rate=SAMPLE_RATE):

@@ -65,8 +65,17 @@ class SongDatabase:
         Returns:
             The assigned song_id (int)
         """
-        # TODO: Implement index_song
-        raise NotImplementedError("Implement index_song()")
+        audio, sr = load_audio(filepath)
+        fingerprints = fingerprint_audio(audio, sr)
+        song_id = self._next_id
+        self._next_id += 1
+        if song_name is None:
+            song_name = os.path.splitext(os.path.basename(filepath))[0]
+        self.song_names[song_id] = song_name
+        for hash_val, time_offset in fingerprints:
+            self.table.insert(hash_val, (song_id, time_offset))
+        print(f"Indexed '{song_name}' with ID {song_id} and {len(fingerprints)} fingerprints.")
+        return song_id
 
     def index_directory(self, directory):
         """
@@ -81,9 +90,12 @@ class SongDatabase:
         Args:
             directory: Path to a directory containing .wav files
         """
-        # TODO: Implement index_directory
-        raise NotImplementedError("Implement index_directory()")
-
+        wav_files = [f for f in os.listdir(directory) if f.lower().endswith('.wav')]
+        wav_files.sort()  # Sort alphabetically
+        for filename in wav_files:
+            filepath = os.path.join(directory, filename)
+            self.index_song(filepath)
+        print(f"Indexed {len(wav_files)} songs from '{directory}'.")
     # ------------------------------------------------------------------ #
     # Serialization — YOU IMPLEMENT THESE
     # ------------------------------------------------------------------ #
@@ -119,8 +131,26 @@ class SongDatabase:
         Args:
             filepath: Where to save the JSON file (e.g., "data/database.json")
         """
-        # TODO: Implement save
-        raise NotImplementedError("Implement save()")
+        entries = []
+        for bucket in self.table._buckets:
+            for key, (song_id, time_offset) in bucket:
+                entries.append([int(key), int(song_id), int(time_offset)])
+        
+        data = {
+            "song_names": {str(k): v for k, v in self.song_names.items()},
+            "next_id": self._next_id,
+            "capacity": self.table.capacity(),
+            "entries": entries
+        }
+
+        directory = os.path.dirname(filepath)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
+
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(data, f)
+
+        print(f"Database saved to '{filepath}' with {len(entries)} entries.")
 
     @classmethod
     def load(cls, filepath):
@@ -147,5 +177,15 @@ class SongDatabase:
         Returns:
             A new SongDatabase instance with all data restored
         """
-        # TODO: Implement load
-        raise NotImplementedError("Implement load()")
+        with open(filepath, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        db = cls()
+        db.song_names = {int(k): v for k, v in data["song_names"].items()}
+        db._next_id = data["next_id"]
+        db.table = HashTable(capacity=data["capacity"])
+
+        for key, song_id, time_offset in data["entries"]:
+            db.table.insert(key, (song_id, time_offset))
+
+        return db
